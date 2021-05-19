@@ -1,0 +1,10 @@
+.idea/
+.env
+.env.test
+*.egg-info
+__pycache__/
+venv/
+input.raw
+test.py
+test.session
+test.ogg
