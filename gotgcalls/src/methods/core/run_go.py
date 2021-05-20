@@ -1,4 +1,5 @@
-import os
+import subprocess
+import sys
 
 
 class RunGO:
@@ -11,6 +12,11 @@ class RunGO:
             arguments: str = '',
     ):
         try:
-            os.system(f'{file_path} {arguments}')
+            is_windows = sys.platform.startswith('win')
+            if is_windows:
+                file_executable = 'core.exe'
+            else:
+                file_executable = './core'
+            subprocess.Popen(f'{file_path}{file_executable} {arguments}', creationflags=8, close_fds=True)
         except KeyboardInterrupt:
-            self.is_running = False
+            self.pytgcalls.is_running = False

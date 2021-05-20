@@ -199,17 +199,13 @@ class PyTgCalls(Methods):
                         except Exception:
                             pass
                     print(f'Starting on port: {self._port}')
-                    self._spawn_process(
-                        self._run_go,
-                        (
-                            f'{__file__.replace("pytgcalls.py", "")}./core',
-                            f'port={self._port} log_mode={self._log_mode}',
-                        ),
-                    )
                 except KeyboardInterrupt:
                     pass
                 try:
-                    asyncio.get_event_loop().run_until_complete(self._start_web_app())
+                    asyncio.get_event_loop().run_until_complete(self._prepare_run(
+                        f'{__file__.replace("pytgcalls.py", "")}',
+                        f'port={self._port} log_mode={self._log_mode}'
+                    ))
                 except KeyboardInterrupt:
                     print(
                         f'\n{self.pytgcalls.FAIL} '

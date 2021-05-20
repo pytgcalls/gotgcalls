@@ -7,7 +7,6 @@ from websockets.exceptions import ConnectionClosedError
 class StartWebApp:
     def __init__(self, pytgcalls):
         self.pytgcalls = pytgcalls
-
     # noinspection PyProtectedMember
     async def _start_web_app(self, limit: int = 10):
         await asyncio.sleep(0.125)
@@ -33,7 +32,9 @@ class StartWebApp:
                         else:
                             await websocket.send('RECEIVED')
         except ConnectionRefusedError:
-            if limit > 0:
+            if limit > 0 & self.pytgcalls.is_running:
                 await self._start_web_app(limit - 1)
+            else:
+                raise Exception(f"Too many attempts when connecting to localhost:{self.pytgcalls._port}")
         except ConnectionClosedError:
             pass
