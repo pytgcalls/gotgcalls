@@ -1,4 +1,5 @@
 import os
+import sys
 
 
 class PrepareRun:
@@ -11,9 +12,14 @@ class PrepareRun:
             file_path: str,
             arguments: str
     ):
-        os.system('color')
-        self.pytgcalls._run_go(
-            file_path,
-            arguments
+        is_windows = sys.platform.startswith('win')
+        if is_windows:
+            os.system('color')
+        self.pytgcalls._spawn_process(
+            self.pytgcalls._run_go,
+            (
+                file_path,
+                arguments
+            )
         )
         await self.pytgcalls._start_web_app()

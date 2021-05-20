@@ -7,6 +7,7 @@ venv/
 input.raw
 test.py
 test.session
+test.session-journal
 test.ogg
 gotgcalls/src/core.exe
 gotgcalls/src/core
