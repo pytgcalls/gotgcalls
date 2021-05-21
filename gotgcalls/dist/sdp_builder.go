@@ -17,17 +17,25 @@ type SdpBuilderClient struct{
 	newLine []string
 }
 
-func (r *SdpBuilderClient) fromConference(conference Conference) string {
-	r.addConference(conference)
+func (r *SdpBuilderClient) fromConference(conference Conference, isAnswer bool) string {
+	r.addConference(conference, isAnswer)
 	return r.finalize()
 }
 
-func (r *SdpBuilderClient) addConference(conference Conference) {
+func (r *SdpBuilderClient) addConference(conference Conference, isAnswer bool) {
 	ssrcs := conference.ssrcs
+	if isAnswer {
+		for ssrc := range ssrcs {
+			if ssrcs[ssrc].isMain {
+				ssrcs = []Ssrc{ssrcs[ssrc]}
+				break
+			}
+		}
+	}
 	sessionId := conference.sessionId
 	r.addHeader(sessionId, ssrcs)
 	for ssrc := range ssrcs{
-		r.addSsrcEntry(ssrcs[ssrc], conference.transport)
+		r.addSsrcEntry(ssrcs[ssrc], conference.transport, isAnswer)
 	}
 }
 func (r *SdpBuilderClient) addHeader(sessionId int, ssrcs []Ssrc) {
@@ -56,7 +64,7 @@ func (r *SdpBuilderClient) toAudioSsrc(ssrc Ssrc) string {
 	}
 	return fmt.Sprintf("audio%d", ssrc.ssrc)
 }
-func (r *SdpBuilderClient) addSsrcEntry(entry Ssrc, transport Transport) {
+func (r *SdpBuilderClient) addSsrcEntry(entry Ssrc, transport Transport, isAnswer bool) {
 	ssrc := entry.ssrc
 	var isMain int
 	if entry.isMain {
@@ -65,17 +73,13 @@ func (r *SdpBuilderClient) addSsrcEntry(entry Ssrc, transport Transport) {
 		isMain = 0
 	}
 	r.add(fmt.Sprintf("m=audio %d RTP/SAVPF 111 126", isMain))
-	if entry.isMain{
-		r.add("c=IN IP4 0.0.0.0")
-	}
+	r.add("c=IN IP4 0.0.0.0")
 	r.add(fmt.Sprintf("a=mid:%s", r.toAudioSsrc(entry)))
 	if entry.isRemoved != nil && *entry.isRemoved {
 		r.add("a=inactive")
 		return
 	}
-	if entry.isMain{
-		r.addTransport(transport)
-	}
+	r.addTransport(transport)
 	r.add("a=rtpmap:111 opus/48000/2")
 	r.add("a=rtpmap:126 telephone-event/8000")
 	r.add("a=fmtp:111 minptime=10; useinbandfec=1; usedtx=1")
@@ -83,6 +87,10 @@ func (r *SdpBuilderClient) addSsrcEntry(entry Ssrc, transport Transport) {
 	r.add("a=rtcp-mux")
 	r.add("a=rtcp-fb:111 transport-cc")
 	r.add("a=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level")
+	if isAnswer {
+		r.add("a=recvonly")
+		return
+	}
 	if entry.isMain{
 		r.add("a=sendrecv")
 	}else{

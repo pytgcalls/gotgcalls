@@ -3,8 +3,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/pion/mediadevices"
+	"github.com/pion/mediadevices/pkg/codec/opus"
 	_ "github.com/pion/mediadevices/pkg/codec/opus"
 	_ "github.com/pion/mediadevices/pkg/driver/microphone"
+	"github.com/pion/mediadevices/pkg/prop"
 	"github.com/pion/webrtc/v3"
 	"time"
 )
@@ -36,22 +39,30 @@ func (r *RTCPeerConnectionClient) joinCall() bool{
 				ctxIceConnected <- true
 			}
 		})
-		/*stream, err := mediadevices.GetUserMedia(mediadevices.MediaStreamConstraints{
+		opusParams, err := opus.NewParams()
+		if err != nil {
+			panic(err)
+		}
+		codecSelector := mediadevices.NewCodecSelector(
+			mediadevices.WithAudioEncoders(&opusParams),
+		)
+		stream, err := mediadevices.GetUserMedia(mediadevices.MediaStreamConstraints{
 			Audio: func(constraints *mediadevices.MediaTrackConstraints) {
 				constraints.ChannelCount = prop.Int(1)
 				constraints.SampleRate = prop.Int(16)
 			},
+			Codec: codecSelector,
 		})
 		if err != nil {
 			fmt.Println(err)
 			return false
-		}*/
-		audioTrack, err := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: "audio/opus"}, "audio", "pion")
+		}
+		/*audioTrack, err := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: "audio/opus"}, "audio", "pion")
 		if err != nil {
 			return false
-		}
-		//_, err = peerConnection.AddTrack(stream.GetAudioTracks()[0].(*mediadevices.AudioTrack))
-		_, err = peerConnection.AddTrack(audioTrack)
+		}*/
+		_, err = peerConnection.AddTrack(stream.GetAudioTracks()[0].(*mediadevices.AudioTrack))
+		//_, err = peerConnection.AddTrack(audioTrack)
 		if err != nil {
 			_ = peerConnection.Close()
 			return false
@@ -95,16 +106,15 @@ func (r *RTCPeerConnectionClient) joinCall() bool{
 			transport: *(*joinGroupCallResult).transport,
 			ssrcs: []Ssrc{{ssrc: *sdp.source, isMain: true}},
 		}
-		fmt.Println(peerConnection)
 		err = peerConnection.SetRemoteDescription(webrtc.SessionDescription{
 			Type: webrtc.SDPTypeAnswer,
-			SDP: SdpBuilder().fromConference(conference),
+			SDP: SdpBuilder().fromConference(conference, true),
 		})
 		if err != nil {
 			_ = peerConnection.Close()
 			return false
 		}
-		r.audioTrack = audioTrack
+		//r.audioTrack = audioTrack
 		return true
 	}else{
 		return false

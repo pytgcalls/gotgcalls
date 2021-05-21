@@ -27,7 +27,7 @@ func onMessage(data map[string]interface{}) {
 			normalizeInt(data["chat_id"]),
 			normalizeString(data["invite_hash"]),
 		)
-		stream := Stream(
+		/*stream := Stream(
 			data["file_path"].(string),
 			16,
 			normalizeInt(data["bitrate"]),
@@ -35,11 +35,11 @@ func onMessage(data map[string]interface{}) {
 			logMode,
 			normalizeInt(data["buffer_long"]),
 		)
-		if stream != nil{
+		if stream != nil{*/
 			result := connections.joinCall()
 			if result{
-				stream.start(connections.Track())
+				//stream.start(connections.Track())
 			}
-		}
+		//}
 	}
 }
