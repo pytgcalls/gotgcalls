@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"github.com/pion/mediadevices"
 	"github.com/pion/mediadevices/pkg/codec/opus"
-	_ "github.com/pion/mediadevices/pkg/codec/opus"
 	_ "github.com/pion/mediadevices/pkg/driver/microphone"
 	"github.com/pion/mediadevices/pkg/prop"
+	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v3/pkg/media"
+	"github.com/pion/webrtc/v3/pkg/media/oggwriter"
+	"strings"
 	"time"
 )
 
@@ -27,29 +30,32 @@ func RTCPeerConnection(chatId int, inviteHash *string) *RTCPeerConnectionClient 
 	return resultClient
 }
 func (r *RTCPeerConnectionClient) joinCall() bool{
-	ctxIceConnected := make(chan bool)
-	peerConnection, err := webrtc.NewPeerConnection(webrtc.Configuration{})
+	mediaEngine := webrtc.MediaEngine{}
+	opusParams, err := opus.NewParams()
+	if err != nil {
+		panic(err)
+	}
+	/**offer := webrtc.SessionDescription{}
+	Decode(MustReadStdin(), &offer)
+	fmt.Println(offer.SDP)**/
+	codecSelector := mediadevices.NewCodecSelector(
+		mediadevices.WithAudioEncoders(&opusParams),
+	)
+	codecSelector.Populate(&mediaEngine)
+	api := webrtc.NewAPI(webrtc.WithMediaEngine(&mediaEngine))
+	peerConnection, err := api.NewPeerConnection(webrtc.Configuration{})
 	if err == nil{
 		r.rtcConnection = peerConnection
 		peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
 			if logMode > 0 {
 				fmt.Printf("IceConnection State has changed to %s \n", connectionState.String())
 			}
-			if connectionState == webrtc.ICEConnectionStateConnected {
-				ctxIceConnected <- true
-			}
 		})
-		opusParams, err := opus.NewParams()
-		if err != nil {
-			panic(err)
-		}
-		codecSelector := mediadevices.NewCodecSelector(
-			mediadevices.WithAudioEncoders(&opusParams),
-		)
 		stream, err := mediadevices.GetUserMedia(mediadevices.MediaStreamConstraints{
 			Audio: func(constraints *mediadevices.MediaTrackConstraints) {
+				constraints.SampleSize = prop.Int(2)
 				constraints.ChannelCount = prop.Int(1)
-				constraints.SampleRate = prop.Int(16)
+				constraints.SampleRate = prop.Int(48000)
 			},
 			Codec: codecSelector,
 		})
@@ -57,30 +63,34 @@ func (r *RTCPeerConnectionClient) joinCall() bool{
 			fmt.Println(err)
 			return false
 		}
-		/*audioTrack, err := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: "audio/opus"}, "audio", "pion")
-		if err != nil {
-			return false
-		}*/
-		_, err = peerConnection.AddTrack(stream.GetAudioTracks()[0].(*mediadevices.AudioTrack))
-		//_, err = peerConnection.AddTrack(audioTrack)
-		if err != nil {
-			_ = peerConnection.Close()
-			return false
+		for _, track := range stream.GetTracks() {
+			track.OnEnded(func(err error) {
+				fmt.Printf("Track (ID: %s) ended with error: %v\n",
+					track.ID(), err)
+			})
+			fmt.Println("Found track",track.ID())
+			_, err = peerConnection.AddTransceiverFromTrack(track,
+				webrtc.RTPTransceiverInit{
+					Direction: webrtc.RTPTransceiverDirectionSendonly,
+				},
+			)
+			if err != nil {
+				panic(err)
+			}
 		}
 		offer, err := peerConnection.CreateOffer(nil)
 		if err != nil {
 			_ = peerConnection.Close()
+			fmt.Println(err)
 			return false
 		}
 		err = peerConnection.SetLocalDescription(offer)
-		if err != nil {
-			_ = peerConnection.Close()
-			return false
-		}
+
 		sdp := r.parseSdp(offer.SDP)
 		if sdp.ufrag == nil || sdp.pwd == nil || sdp.hash == nil || sdp.fingerprint == nil || sdp.source == nil {
 			return false
 		}
+		oggFile, err := oggwriter.New("output.ogg", 48000, 2)
 		payload := JoinVoiceCallParams{
 			chatId: r.chatId,
 			ufrag: *sdp.ufrag,
@@ -91,6 +101,7 @@ func (r *RTCPeerConnectionClient) joinCall() bool{
 			source: *sdp.source,
 			inviteHash: r.inviteHash,
 		}
+
 		if logMode > 0 {
 			fmt.Println("callJoinPayload -> ", payload)
 		}
@@ -110,11 +121,43 @@ func (r *RTCPeerConnectionClient) joinCall() bool{
 			Type: webrtc.SDPTypeAnswer,
 			SDP: SdpBuilder().fromConference(conference, true),
 		})
+		peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+			go func() {
+				ticker := time.NewTicker(time.Second * 3)
+				for range ticker.C {
+					errSend := peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(track.SSRC())}})
+					if errSend != nil {
+						fmt.Println(errSend)
+					}
+				}
+			}()
+			codec := track.Codec()
+			if strings.EqualFold(codec.MimeType, webrtc.MimeTypeOpus) {
+				fmt.Println("Got Opus track, saving to disk as output.opus (48 kHz, 2 channels)")
+				saveToDisk(oggFile, track)
+			} else {
+				fmt.Println("UNKNOWN MIME TYPE")
+			}
+		})
+		/*err = peerConnection.SetRemoteDescription(offer)
 		if err != nil {
 			_ = peerConnection.Close()
+			fmt.Println(err)
 			return false
 		}
+		answer, err := peerConnection.CreateAnswer(nil)
+		if err != nil {
+			panic(err)
+		}
+		err = peerConnection.SetLocalDescription(answer)
+		if err != nil {
+			panic(err)
+		}*/
+		gatherComplete := webrtc.GatheringCompletePromise(peerConnection)
+		<-gatherComplete
+		//fmt.Println(Encode(*peerConnection.LocalDescription()))
 		//r.audioTrack = audioTrack
+		select {}
 		return true
 	}else{
 		return false
@@ -123,6 +166,23 @@ func (r *RTCPeerConnectionClient) joinCall() bool{
 
 func (r *RTCPeerConnectionClient) Track() *webrtc.TrackLocalStaticSample {
 	return r.audioTrack
+}
+func saveToDisk(i media.Writer, track *webrtc.TrackRemote) {
+	defer func() {
+		if err := i.Close(); err != nil {
+			panic(err)
+		}
+	}()
+
+	for {
+		rtpPacket, _, err := track.ReadRTP()
+		if err != nil {
+			panic(err)
+		}
+		if err := i.WriteRTP(rtpPacket); err != nil {
+			panic(err)
+		}
+	}
 }
 
 func (r *RTCPeerConnectionClient) joinVoiceCall(params JoinVoiceCallParams) *JoinVoiceCallResponse {

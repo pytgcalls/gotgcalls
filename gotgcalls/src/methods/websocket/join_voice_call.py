@@ -21,6 +21,7 @@ class JoinVoiceCall:
             }],
             'ssrc': params['source'],
         }
+        print(request_call)
         chat_call = None
         # noinspection PyBroadException
         try:

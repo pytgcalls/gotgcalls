@@ -37,6 +37,7 @@ func onMessage(data map[string]interface{}) {
 		)
 		if stream != nil{*/
 			result := connections.joinCall()
+			fmt.Println(result)
 			if result{
 				//stream.start(connections.Track())
 			}

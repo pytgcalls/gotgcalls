@@ -9,6 +9,7 @@ test.py
 test.session
 test.session-journal
 test.ogg
+output.ogg
 gotgcalls/src/core.exe
 gotgcalls/src/core
 gotgcalls/dist/core.exe
